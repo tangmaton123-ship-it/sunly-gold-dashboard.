@@ -1,198 +1,156 @@
-import requests
-import streamlit as st
-from streamlit_autorefresh import st_autorefresh
-from datetime import datetime, timezone
 
+import streamlit as st
+import requests
+from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
+
+# -----------------------------
+# PAGE SETTINGS
+# -----------------------------
 st.set_page_config(
     page_title="ស៊ុនលី សម័យថ្មី | តម្លៃមាស",
     page_icon="🟡",
     layout="wide",
 )
 
+# Refresh dashboard every 30 seconds
+st_autorefresh(interval=30_000, key="gold_refresh")
+
+API_URL = "https://xaus.com/api/v1/spot?compact=1"
+
+# -----------------------------
+# GOLD PRICE FETCH
+# -----------------------------
+@st.cache_data(ttl=30)
+def fetch_gold_price():
+    response = requests.get(API_URL, timeout=15)
+    response.raise_for_status()
+    data = response.json()
+
+    price = data.get("spot_usd_oz")
+    if price is None:
+        raise ValueError("API មិនបានផ្តល់តម្លៃមាស")
+
+    state = data.get("data_state") or {}
+
+    return {
+        "price": float(price),
+        "status": state.get("status", "unknown"),
+        "updated_at": data.get("price_as_of")
+        or state.get("as_of")
+        or data.get("updated_at", ""),
+        "age_seconds": state.get("age_seconds"),
+    }
+
+# -----------------------------
+# DESIGN
+# -----------------------------
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&display=swap');
+
 html, body, [class*="css"] {
     font-family: 'Kantumruy Pro', sans-serif;
 }
+
 .main-title {
     text-align: center;
     font-size: 2.1rem;
     font-weight: 700;
-    margin-bottom: 8px;
+    color: #b58a20;
+    margin-bottom: 4px;
 }
+
 .sub-title {
     text-align: center;
     color: #b58a20;
+    font-size: 1rem;
     margin-bottom: 28px;
 }
+
 .price-card {
     border: 1px solid rgba(181,138,32,0.5);
     border-radius: 16px;
     padding: 24px 12px;
     text-align: center;
-    min-height: 170px;
+    margin-bottom: 16px;
 }
+
 .price-label {
-    font-size: 1rem;
-    margin-bottom: 14px;
+    color: #b58a20;
+    font-size: 1.05rem;
+    font-weight: 600;
 }
+
 .price-value {
     font-size: 2rem;
     font-weight: 700;
-    color: #b58a20;
+    margin-top: 10px;
     overflow-wrap: anywhere;
-}
-.price-unit {
-    font-size: 0.95rem;
-    margin-top: 8px;
 }
 </style>
 """, unsafe_allow_html=True)
 
+# -----------------------------
+# HEADER
+# -----------------------------
 st.markdown(
-    '<div class="main-title">ហាងមាស ស៊ុនលី សម័យថ្មី</div>',
+    '<div class="main-title">Sunly សម័យថ្មី</div>',
     unsafe_allow_html=True,
 )
 st.markdown(
-    '<div class="sub-title">តម្លៃមាសអន្តរជាតិ និងតម្លៃមាសក្នុងមួយដំឡឹង</div>',
+    '<div class="sub-title">តម្លៃមាសអន្តរជាតិ និងតម្លៃក្នុងមួយតម្លឹង</div>',
     unsafe_allow_html=True,
 )
 
-with st.sidebar:
-    st.header("ការកំណត់")
-    # Prefer Streamlit Secrets so the hosted app can fetch prices without
-    # requiring someone to type the API key into the sidebar each time.
-    try:
-        saved_api_key = st.secrets.get("GOLD_API_KEY", "")
-    except Exception:
-        saved_api_key = ""
+# -----------------------------
+# DISPLAY LIVE DATA
+# -----------------------------
+try:
+    gold = fetch_gold_price()
+    xau_usd = gold["price"]
 
-    typed_api_key = st.text_input(
-        "លេខកូដ API (បើចង់បញ្ចូលដោយដៃ)",
-        type="password",
-        help="អាចរក្សាទុក GOLD_API_KEY ក្នុង Streamlit Secrets ដើម្បីកុំឱ្យបញ្ចូលរាល់ពេល។",
-    )
-    api_key = typed_api_key.strip() or str(saved_api_key).strip()
-    refresh_seconds = st.selectbox(
-        "ចន្លោះពេលធ្វើបច្ចុប្បន្នភាព",
-        [30, 60, 120, 300],
-        index=1,
-        format_func=lambda n: f"រៀងរាល់ {n} វិនាទី",
-    )
-    st.divider()
-    st.markdown("**សម្រាប់សាកល្បងប៉ុណ្ណោះ**")
-    manual_price = st.number_input(
-        "តម្លៃអន្តរជាតិក្នុងមួយអោន (ដុល្លារ)",
-        min_value=0.0,
-        value=0.0,
-        step=10.0,
-        help="ប្រើសម្រាប់សាកល្បងនៅពេលមិនទាន់មានលេខកូដ API។",
-    )
-
-st_autorefresh(interval=refresh_seconds * 1000, key="gold_price_refresh")
-
-def fetch_gold_price(api_token):
-    response = requests.get(
-        "https://www.goldapi.io/api/XAU/USD",
-        headers={
-            "x-access-token": api_token,
-            "Content-Type": "application/json",
-    },
-        timeout=15,
-    )
-
-    # Include the HTTP status in the exception so the app can explain
-    # common authentication, quota, and connection problems.
-    if not response.ok:
-        raise RuntimeError(f"GoldAPI returned HTTP {response.status_code}")
-
-    data = response.json()
-    if "price" not in data:
-        raise RuntimeError("GoldAPI response did not contain a price")
-    return float(data["price"]), data.get("timestamp")
-
-gold_price_ounce = None
-updated_timestamp = None
-source_label = ""
-
-if api_key.strip():
-    try:
-        gold_price_ounce, updated_timestamp = fetch_gold_price(api_key.strip())
-        source_label = "តម្លៃផ្ទាល់ពី GoldAPI.io"
-    except requests.exceptions.Timeout:
-        st.error("ការទាញយកតម្លៃមាសអស់ពេលរង់ចាំ។ សូមសាកល្បងម្ដងទៀត។")
-    except requests.exceptions.RequestException:
-        st.error("មិនអាចភ្ជាប់ទៅ GoldAPI.io បានទេ។ សូមពិនិត្យអ៊ីនធឺណិត ឬសាកល្បងម្ដងទៀត។")
-    except Exception as exc:
-        # Avoid displaying the API key or request headers in any error message.
-        message = str(exc)
-        if "401" in message or "403" in message:
-            st.error("GoldAPI មិនអនុញ្ញាតឱ្យប្រើលេខកូដនេះទេ។ សូមពិនិត្យ API key និងសិទ្ធិប្រើប្រាស់។")
-        elif "429" in message:
-            st.error("បានប្រើចំនួនសំណើ GoldAPI ដល់កំណត់ហើយ។ សូមពិនិត្យគម្រោង API ឬបន្ថយការធ្វើបច្ចុប្បន្នភាព។")
-        else:
-            st.error("មិនអាចទាញយកតម្លៃមាសបានទេ។ សូមពិនិត្យ API key និងការកំណត់ GoldAPI.io។")
-
-if gold_price_ounce is None and manual_price > 0:
-    gold_price_ounce = float(manual_price)
-    source_label = "តម្លៃបញ្ចូលដោយដៃ មិនមែនតម្លៃផ្ទាល់"
-
-if gold_price_ounce is None:
-    st.info("សូមបញ្ចូលលេខកូដ API នៅផ្នែកខាងឆ្វេង ដើម្បីបង្ហាញតម្លៃមាសអន្តរជាតិ។")
-    st.markdown(
-        "**រូបមន្តតម្លៃមាសក្នុងមួយដំឡឹង៖** "
-        "តម្លៃមាសដែលបង្ហាញ ÷ 0.83"
-    )
-else:
-    # តាមរូបមន្តដែលបានស្នើ៖ តម្លៃដែលបង្ហាញ ÷ 0.83
-    gold_price_tael = gold_price_ounce / 0.83
+    # User-requested calculation.
+    # This is not a verified Cambodian market-price conversion.
+    per_tael = xau_usd / 0.83
 
     left, right = st.columns(2, gap="large")
 
     with left:
-        st.markdown(
-            f"""
-            <div class="price-card">
-                <div class="price-label">តម្លៃមាសអន្តរជាតិ (XAU/USD)</div>
-                <div class="price-value">${gold_price_ounce:,.2f}</div>
-                <div class="price-unit">ដុល្លារអាមេរិក ក្នុងមួយអោន</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""
+        <div class="price-card">
+            <div class="price-label">តម្លៃមាសអន្តរជាតិ XAU/USD</div>
+            <div class="price-value">${xau_usd:,.2f}</div>
+            <div>ក្នុងមួយត្រយអោន</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with right:
-        st.markdown(
-            f"""
-            <div class="price-card">
-                <div class="price-label">តម្លៃមាសក្នុងមួយដំឡឹង</div>
-                <div class="price-value">${gold_price_tael:,.2f}</div>
-                <div class="price-unit">ដុល្លារអាមេរិក ក្នុងមួយដំឡឹង</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""
+        <div class="price-card">
+            <div class="price-label">តម្លៃគណនាក្នុងមួយតម្លឹង</div>
+            <div class="price-value">${per_tael:,.2f}</div>
+            <div>តម្លៃគណនាតាមរូបមន្ត ÷ 0.83</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    st.caption("ប្រភព៖ " + source_label)
-    if updated_timestamp:
-        try:
-            local_time = datetime.fromtimestamp(
-                int(updated_timestamp), timezone.utc
-            ).astimezone()
-            st.caption(
-                "ពេលធ្វើបច្ចុប្បន្នភាព៖ "
-                + local_time.strftime("%Y-%m-%d %H:%M:%S")
-            )
-        except (ValueError, TypeError, OSError):
-            pass
+    if gold["status"] == "fresh":
+        st.success("ស្ថានភាពទិន្នន័យ៖ ថ្មី")
+    elif gold["status"] == "stale":
+        st.warning("ទិន្នន័យចាស់ពីប្រភពចុងក្រោយ មិនមែនតម្លៃបន្តផ្ទាល់ថ្មីទេ")
+    else:
+        st.warning("មិនអាចបញ្ជាក់ថាទិន្នន័យថ្មីឬអត់បានទេ")
 
-st.divider()
-st.subheader("ព័ត៌មានសំខាន់")
-st.markdown("""
-- បង្ហាញតែតម្លៃមាសអន្តរជាតិ និងតម្លៃមាសក្នុងមួយដំឡឹង។
-- រូបមន្តគណនា៖ តម្លៃមាសដែលបង្ហាញ ÷ 0.83។
-- មិនបង្ហាញតម្លៃទិញចូល ឬលក់ចេញរបស់ហាងទេ។
-- តម្លៃមាសក្នុងមួយដំឡឹងនេះជាតម្លៃគណនាតាមរូបមន្តដែលបានកំណត់ មិនមែនជាតម្លៃទិញលក់ក្នុងស្រុកដែលបានបញ្ជាក់ឡើយ។
-""")
-st.caption("ស៊ុនលី សម័យថ្មី • កម្មវិធីតម្លៃមាស")
+    if gold["updated_at"]:
+        st.caption(f"ពេលវេលាតម្លៃ៖ {gold['updated_at']}")
+
+    st.caption("ប្រភពទិន្នន័យ៖ XAUS · XAU/USD")
+
+except requests.RequestException:
+    st.error("មិនអាចភ្ជាប់ទៅប្រភពតម្លៃមាសបានទេ។ សូមពិនិត្យការតភ្ជាប់ ហើយសាកល្បងម្ដងទៀត។")
+except (ValueError, TypeError, KeyError):
+    st.error("ទិន្នន័យតម្លៃមាសមិនត្រឹមត្រូវ ឬមិនពេញលេញទេ។")
+except Exception:
+    st.error("មានបញ្ហាមិនរំពឹងទុក។ សូមព្យាយាមម្ដងទៀត។")
+
+st.caption("តម្លៃអន្តរជាតិអាចខុសពីតម្លៃទិញលក់ជាក់ស្តែងនៅកម្ពុជា។")
