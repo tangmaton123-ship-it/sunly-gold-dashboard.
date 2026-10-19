@@ -107,7 +107,7 @@ st_autorefresh(
 # ---------- GOLD API ----------
 def fetch_gold_price(api_token):
     response = requests.get(
-        "https://www.goldapi.io/api/XAU/USD",
+      "https://www.goldapi.io/api/price/XAU/USD",
         headers={
             "x-access-token": api_token,
             "Content-Type": "application/json",
