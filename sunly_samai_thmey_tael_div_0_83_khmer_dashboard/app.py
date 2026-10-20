@@ -13,8 +13,8 @@ st.set_page_config(
     layout="wide",
 )
 
-# Refresh every 60 seconds
-st_autorefresh(interval=60_000, key="gold_refresh")
+# Refresh the page every 5 seconds
+st_autorefresh(interval=5_000, key="gold_refresh")
 
 # -----------------------------
 # Dashboard design
@@ -94,9 +94,9 @@ st.markdown(
 )
 
 # -----------------------------
-# Gold price API
+# Fetch gold price
 # -----------------------------
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def get_gold_price():
     url = "https://api.gold-api.com/price/XAU"
 
@@ -106,20 +106,16 @@ def get_gold_price():
         timeout=15,
     )
 
-    # Show the real HTTP error if the API is unavailable
     if response.status_code != 200:
-        details = response.text[:300]
         raise RuntimeError(
             f"Gold API returned HTTP {response.status_code}. "
-            f"Response: {details}"
+            f"Response: {response.text[:300]}"
         )
 
     try:
         data = response.json()
     except ValueError as e:
-        raise RuntimeError(
-            "The gold API returned invalid JSON."
-        ) from e
+        raise RuntimeError("The API returned invalid JSON.") from e
 
     if not isinstance(data, dict) or "price" not in data:
         raise RuntimeError(
@@ -129,12 +125,10 @@ def get_gold_price():
     try:
         price = float(data["price"])
     except (TypeError, ValueError) as e:
-        raise RuntimeError(
-            "The gold API returned an invalid price value."
-        ) from e
+        raise RuntimeError("The API returned an invalid price.") from e
 
     if price <= 0:
-        raise RuntimeError("The gold API returned a non-positive price.")
+        raise RuntimeError("The API returned an invalid price.")
 
     return price
 
@@ -190,13 +184,13 @@ try:
     st.success("បានទាញយកទិន្នន័យតម្លៃមាស")
 
     st.caption(
-        "ម៉ោងទាញយក៖ "
+        "ម៉ោងពេលបង្ហាញ៖ "
         + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
 
     st.caption(
-        "តម្លៃអាចប្រែប្រួល ហើយអាចមិនមានទិន្នន័យ "
-        "នៅពេលប្រភពសេវាមិនដំណើរការ។"
+        "ទំព័រធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ៥ វិនាទី។ "
+        "ទិន្នន័យតម្លៃមាសត្រូវបានរក្សាទុកបណ្ដោះអាសន្ន ៣០ វិនាទី។"
     )
 
 except RuntimeError as e:
@@ -205,7 +199,6 @@ except RuntimeError as e:
 
 except requests.exceptions.Timeout:
     st.error("ការទាញយកតម្លៃមាសចំណាយពេលយូរពេក។")
-    st.caption("សូមសាកល្បងម្ដងទៀតនៅពេលក្រោយ។")
 
 except requests.exceptions.RequestException as e:
     st.error("មិនអាចភ្ជាប់ទៅប្រភពតម្លៃមាសបានទេ។")
