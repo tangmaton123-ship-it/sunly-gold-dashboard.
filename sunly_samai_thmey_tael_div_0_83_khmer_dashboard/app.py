@@ -13,13 +13,11 @@ st.set_page_config(
     layout="wide",
 )
 
-# -----------------------------
-# Auto refresh every 30 seconds
-# -----------------------------
-st_autorefresh(interval=30_000, key="gold_price_refresh")
+# Refresh every 60 seconds
+st_autorefresh(interval=60_000, key="gold_refresh")
 
 # -----------------------------
-# Styling
+# Dashboard design
 # -----------------------------
 st.markdown(
     """
@@ -89,17 +87,18 @@ st.markdown(
     '<div class="main-title">🟡 ស៊ុនលី សម័យថ្មី</div>',
     unsafe_allow_html=True,
 )
+
 st.markdown(
     '<div class="sub-title">តម្លៃមាសអន្តរជាតិ និងតម្លៃគណនា</div>',
     unsafe_allow_html=True,
 )
 
 # -----------------------------
-# Fetch gold price
+# Gold price API
 # -----------------------------
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_gold_price():
-    url = "https://xaus.com/api/v1/spot?compact=1"
+    url = "https://api.gold-api.com/price/XAU"
 
     response = requests.get(
         url,
@@ -107,39 +106,37 @@ def get_gold_price():
         timeout=15,
     )
 
-    response.raise_for_status()
-    data = response.json()
+    # Show the real HTTP error if the API is unavailable
+    if response.status_code != 200:
+        details = response.text[:300]
+        raise RuntimeError(
+            f"Gold API returned HTTP {response.status_code}. "
+            f"Response: {details}"
+        )
 
-    # Accept common response formats
-    possible_prices = [
-        data.get("price"),
-        data.get("spot"),
-        data.get("xau_usd"),
-        data.get("XAUUSD"),
-    ]
+    try:
+        data = response.json()
+    except ValueError as e:
+        raise RuntimeError(
+            "The gold API returned invalid JSON."
+        ) from e
 
-    # Some APIs return the values inside a nested object
-    if isinstance(data.get("data"), dict):
-        nested = data["data"]
-        possible_prices.extend([
-            nested.get("price"),
-            nested.get("spot"),
-            nested.get("xau_usd"),
-            nested.get("XAUUSD"),
-        ])
+    if not isinstance(data, dict) or "price" not in data:
+        raise RuntimeError(
+            f"Price field missing. API response: {str(data)[:300]}"
+        )
 
-    for value in possible_prices:
-        if value is not None:
-            try:
-                price = float(value)
-                if price > 0:
-                    return price
-            except (TypeError, ValueError):
-                continue
+    try:
+        price = float(data["price"])
+    except (TypeError, ValueError) as e:
+        raise RuntimeError(
+            "The gold API returned an invalid price value."
+        ) from e
 
-    raise ValueError(
-        "The API response did not contain a recognized gold price."
-    )
+    if price <= 0:
+        raise RuntimeError("The gold API returned a non-positive price.")
+
+    return price
 
 
 # -----------------------------
@@ -149,7 +146,7 @@ try:
     with st.spinner("កំពុងទាញយកតម្លៃមាស..."):
         xau_usd = get_gold_price()
 
-    # User-requested calculation
+    # Requested calculation
     calculated_value = xau_usd / 0.83
 
     left, right = st.columns(2, gap="large")
@@ -158,9 +155,15 @@ try:
         st.markdown(
             f"""
             <div class="price-card">
-                <div class="price-label">តម្លៃមាសអន្តរជាតិ (XAU/USD)</div>
-                <div class="price-value">${xau_usd:,.2f}</div>
-                <div class="price-unit">ដុល្លារអាមេរិក / អោន</div>
+                <div class="price-label">
+                    តម្លៃមាសអន្តរជាតិ (XAU/USD)
+                </div>
+                <div class="price-value">
+                    ${xau_usd:,.2f}
+                </div>
+                <div class="price-unit">
+                    ដុល្លារអាមេរិក / អោន
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -170,9 +173,15 @@ try:
         st.markdown(
             f"""
             <div class="price-card">
-                <div class="price-label">តម្លៃគណនាតាមរូបមន្ត ÷ 0.83</div>
-                <div class="price-value">${calculated_value:,.2f}</div>
-                <div class="price-unit">តម្លៃគណនា មិនមែនជាតម្លៃលក់រាយដែលបានបញ្ជាក់</div>
+                <div class="price-label">
+                    តម្លៃគណនាតាមរូបមន្ត ÷ 0.83
+                </div>
+                <div class="price-value">
+                    ${calculated_value:,.2f}
+                </div>
+                <div class="price-unit">
+                    តម្លៃគណនាតាមរូបមន្តរបស់អ្នក
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -181,34 +190,31 @@ try:
     st.success("បានទាញយកទិន្នន័យតម្លៃមាស")
 
     st.caption(
-        "ពេលវេលាដែលបង្ហាញខាងក្រោម គឺជាពេលដែលកម្មវិធីបានទាញយកទិន្នន័យ "
-        "មិនមែនជាពេលដែលទីផ្សារបានធ្វើបច្ចុប្បន្នភាពតម្លៃនោះទេ។"
-    )
-    st.caption(
         "ម៉ោងទាញយក៖ "
         + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
 
-except requests.exceptions.HTTPError as e:
-    status_code = (
-        e.response.status_code
-        if e.response is not None
-        else "មិនស្គាល់"
+    st.caption(
+        "តម្លៃអាចប្រែប្រួល ហើយអាចមិនមានទិន្នន័យ "
+        "នៅពេលប្រភពសេវាមិនដំណើរការ។"
     )
-    st.error(f"ប្រភពតម្លៃមាសបានឆ្លើយតបដោយកំហុស HTTP: {status_code}")
-    st.caption(f"ព័ត៌មានបច្ចេកទេស៖ {e}")
+
+except RuntimeError as e:
+    st.error("មិនអាចទាញយកតម្លៃមាសបានទេ។")
+    st.code(str(e), language="text")
 
 except requests.exceptions.Timeout:
-    st.error("ការទាញយកតម្លៃមាសចំណាយពេលយូរពេក។ សូមសាកល្បងម្ដងទៀត។")
+    st.error("ការទាញយកតម្លៃមាសចំណាយពេលយូរពេក។")
+    st.caption("សូមសាកល្បងម្ដងទៀតនៅពេលក្រោយ។")
 
 except requests.exceptions.RequestException as e:
     st.error("មិនអាចភ្ជាប់ទៅប្រភពតម្លៃមាសបានទេ។")
     st.caption(f"ប្រភេទកំហុស៖ {type(e).__name__}")
-    st.caption(f"ព័ត៌មានបច្ចេកទេស៖ {e}")
+    st.code(str(e), language="text")
 
-except (ValueError, TypeError) as e:
-    st.error("ទិន្នន័យតម្លៃមាសដែលទទួលបានមិនត្រឹមត្រូវទេ។")
-    st.caption(f"ព័ត៌មានបច្ចេកទេស៖ {e}")
+except (ValueError, TypeError, KeyError) as e:
+    st.error("ទិន្នន័យតម្លៃមាសមិនត្រឹមត្រូវទេ។")
+    st.code(str(e), language="text")
 
 # -----------------------------
 # Footer
