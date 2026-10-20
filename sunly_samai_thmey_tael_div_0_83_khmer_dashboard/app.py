@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Refresh the page every 5 seconds
+# Refresh the dashboard every 5 seconds
 st_autorefresh(interval=5_000, key="gold_refresh")
 
 # -----------------------------
@@ -95,8 +95,9 @@ st.markdown(
 
 # -----------------------------
 # Fetch gold price
+# Cache for 60 seconds
 # -----------------------------
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def get_gold_price():
     url = "https://api.gold-api.com/price/XAU"
 
@@ -184,13 +185,13 @@ try:
     st.success("បានទាញយកទិន្នន័យតម្លៃមាស")
 
     st.caption(
-        "ម៉ោងពេលបង្ហាញ៖ "
+        "ម៉ោងបច្ចុប្បន្ន៖ "
         + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
 
     st.caption(
         "ទំព័រធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ៥ វិនាទី។ "
-        "ទិន្នន័យតម្លៃមាសត្រូវបានរក្សាទុកបណ្ដោះអាសន្ន ៣០ វិនាទី។"
+        "តម្លៃពីប្រភពទិន្នន័យត្រូវបានរក្សាទុក ៦០ វិនាទី។"
     )
 
 except RuntimeError as e:
