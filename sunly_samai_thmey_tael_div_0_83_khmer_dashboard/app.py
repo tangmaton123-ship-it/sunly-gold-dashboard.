@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Auto-refresh every 5 seconds
+# Refresh dashboard every 5 seconds
 st_autorefresh(interval=5_000, key="gold_refresh")
 
 # -----------------------------
@@ -87,7 +87,7 @@ st.markdown(
 )
 
 # -----------------------------
-# GOLD PRICE API
+# INTERNATIONAL GOLD PRICE API
 # -----------------------------
 @st.cache_data(ttl=0, show_spinner=False)
 def get_gold_price():
@@ -97,38 +97,27 @@ def get_gold_price():
         headers={"Accept": "application/json"},
         timeout=10,
     )
-
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"API returned HTTP {response.status_code}: "
-            f"{response.text[:300]}"
-        )
-
-    try:
-        data = response.json()
-    except ValueError as exc:
-        raise RuntimeError("API returned invalid JSON.") from exc
+    response.raise_for_status()
+    data = response.json()
 
     if not isinstance(data, dict) or "price" not in data:
-        raise RuntimeError(
-            f"Price field missing: {str(data)[:300]}"
-        )
+        raise RuntimeError("The API response did not include a price.")
 
-    try:
-        price = float(data["price"])
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError("API returned an invalid price.") from exc
-
+    price = float(data["price"])
     if price <= 0:
-        raise RuntimeError("API returned a non-positive price.")
+        raise RuntimeError("The API returned an invalid price.")
 
-    return price
+    # Use the provider's update timestamp when available
+    updated_at = data.get("updatedAtReadable") or data.get("updatedAt")
+    return price, updated_at
 
 # -----------------------------
 # PRICE CARDS
 # -----------------------------
 try:
-    xau_usd = get_gold_price()
+    xau_usd, api_updated_at = get_gold_price()
+
+    # Requested calculation; this is not an official local retail quote
     tael_value = xau_usd / 0.83
 
     left, right = st.columns(2, gap="large")
@@ -149,6 +138,9 @@ try:
         </div>
         """, unsafe_allow_html=True)
 
+    if api_updated_at:
+        st.caption(f"API data timestamp: {api_updated_at}")
+
     now = datetime.now(ZoneInfo("Asia/Phnom_Penh"))
     st.markdown(
         f'<div class="small-note">ម៉ោងពិនិត្យ API៖ '
@@ -163,29 +155,32 @@ except Exception as exc:
         st.code(str(exc), language="text")
 
 # -----------------------------
-# TRADINGVIEW CHART
+# TRADINGVIEW GOLD SPOT CHART
 # -----------------------------
 st.subheader("តារាងតម្លៃមាសអន្តរជាតិ")
 
 components.html(
     """
-    <div style="height:500px;width:100%">
+    <div class="tradingview-widget-container"
+         style="height:500px;width:100%">
       <div id="tradingview_gold_chart"
            style="height:100%;width:100%"></div>
       <script src="https://s3.tradingview.com/tv.js"></script>
       <script>
-        new TradingView.widget({
-          "autosize": true,
-          "symbol": "OANDA:XAUUSD",
-          "interval": "1",
-          "timezone": "Asia/Phnom_Penh",
-          "theme": "light",
-          "style": "1",
-          "locale": "en",
-          "enable_publishing": false,
-          "allow_symbol_change": true,
-          "container_id": "tradingview_gold_chart"
-        });
+        if (typeof TradingView !== "undefined") {
+          new TradingView.widget({
+            "autosize": true,
+            "symbol": "OANDA:XAUUSD",
+            "interval": "1",
+            "timezone": "Asia/Phnom_Penh",
+            "theme": "light",
+            "style": "1",
+            "locale": "en",
+            "enable_publishing": false,
+            "allow_symbol_change": true,
+            "container_id": "tradingview_gold_chart"
+          });
+        }
       </script>
     </div>
     """,
@@ -193,9 +188,7 @@ components.html(
 )
 
 st.markdown(
-    '<div class="small-note">តារាង TradingView អាចមានប្រភពទិន្នន័យ '
-    'និងពេលអាប់ដេតខុសពីតម្លៃ API។ តម្លៃគណនានេះមិនមែនជា '
-    'តម្លៃលក់រាយផ្លូវការនៅកម្ពុជាទេ។</div>',
+    '<div class="small-note">តម្លៃ API និងតារាង TradingView '
+    'អាចខុសគ្នា ព្រោះប្រើប្រភពទិន្នន័យផ្សេងគ្នា។</div>',
     unsafe_allow_html=True,
 )
-
