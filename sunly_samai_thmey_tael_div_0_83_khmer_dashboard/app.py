@@ -1,11 +1,12 @@
 
 import streamlit as st
 import requests
-from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # -----------------------------
-# Page settings
+# PAGE SETTINGS
 # -----------------------------
 st.set_page_config(
     page_title="ស៊ុនលី សម័យថ្មី | តម្លៃមាស",
@@ -17,207 +18,161 @@ st.set_page_config(
 st_autorefresh(interval=5_000, key="gold_refresh")
 
 # -----------------------------
-# Dashboard design
+# DESIGN
 # -----------------------------
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&display=swap');
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Kantumruy Pro', sans-serif;
-    }
+html, body, [class*="css"] {
+    font-family: 'Kantumruy Pro', sans-serif;
+}
 
-    .main-title {
-        text-align: center;
-        font-size: 2.1rem;
-        font-weight: 700;
-        margin-bottom: 5px;
-    }
+.stApp {
+    background: linear-gradient(135deg, #fffdf6, #f8f3e5);
+}
 
-    .sub-title {
-        text-align: center;
-        color: #b58a20;
-        font-size: 1.05rem;
-        margin-bottom: 28px;
-    }
+.main-title {
+    text-align: center;
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: #8b6914;
+    margin-bottom: 8px;
+}
 
-    .price-card {
-        border: 1px solid rgba(181, 138, 32, 0.5);
-        border-radius: 16px;
-        padding: 24px 12px;
-        text-align: center;
-        margin-bottom: 14px;
-    }
+.sub-title {
+    text-align: center;
+    color: #b58a20;
+    font-size: 1.1rem;
+    margin-bottom: 24px;
+}
 
-    .price-label {
-        font-size: 1rem;
-        color: #888888;
-        margin-bottom: 12px;
-    }
+.price-card {
+    background: #ffffff;
+    border: 1px solid rgba(181, 138, 32, 0.5);
+    border-radius: 16px;
+    padding: 24px 12px;
+    text-align: center;
+    box-shadow: 0 4px 14px rgba(80, 60, 10, 0.06);
+    margin-bottom: 12px;
+}
 
-    .price-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #b58a20;
-        overflow-wrap: anywhere;
-    }
+.price-label {
+    color: #78652f;
+    font-size: 1.05rem;
+    font-weight: 500;
+    margin-bottom: 12px;
+}
 
-    .price-unit {
-        font-size: 0.9rem;
-        color: #888888;
-        margin-top: 8px;
-    }
+.price-value {
+    color: #9a7415;
+    font-size: 2rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
 
-    .footer {
-        text-align: center;
-        color: #888888;
-        font-size: 0.85rem;
-        margin-top: 25px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# -----------------------------
-# Header
-# -----------------------------
-st.markdown(
-    '<div class="main-title">🟡 ស៊ុនលី សម័យថ្មី</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="sub-title">តម្លៃមាសអន្តរជាតិ និងតម្លៃគណនា</div>',
-    unsafe_allow_html=True,
-)
+.small-note {
+    text-align: center;
+    color: #777;
+    font-size: 0.9rem;
+    margin-top: 14px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # -----------------------------
-# Fetch gold price
-# Cache for 60 seconds
+# GOLD PRICE API
 # -----------------------------
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=0, show_spinner=False)
 def get_gold_price():
     url = "https://api.gold-api.com/price/XAU"
 
     response = requests.get(
         url,
         headers={"Accept": "application/json"},
-        timeout=15,
+        timeout=10,
     )
 
     if response.status_code != 200:
         raise RuntimeError(
-            f"Gold API returned HTTP {response.status_code}. "
-            f"Response: {response.text[:300]}"
+            f"API returned HTTP {response.status_code}: "
+            f"{response.text[:300]}"
         )
 
     try:
         data = response.json()
-    except ValueError as e:
-        raise RuntimeError("The API returned invalid JSON.") from e
+    except ValueError as exc:
+        raise RuntimeError("API returned invalid JSON.") from exc
 
     if not isinstance(data, dict) or "price" not in data:
         raise RuntimeError(
-            f"Price field missing. API response: {str(data)[:300]}"
+            f"Price field missing in API response: {str(data)[:300]}"
         )
 
     try:
         price = float(data["price"])
-    except (TypeError, ValueError) as e:
-        raise RuntimeError("The API returned an invalid price.") from e
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("API returned an invalid price.") from exc
 
     if price <= 0:
-        raise RuntimeError("The API returned an invalid price.")
+        raise RuntimeError("API returned a non-positive price.")
 
     return price
 
-
 # -----------------------------
-# Display prices
-# -----------------------------
-try:
-    with st.spinner("កំពុងទាញយកតម្លៃមាស..."):
-        xau_usd = get_gold_price()
-
-    # Requested calculation
-    calculated_value = xau_usd / 0.83
-
-    left, right = st.columns(2, gap="large")
-
-    with left:
-        st.markdown(
-            f"""
-            <div class="price-card">
-                <div class="price-label">
-                    តម្លៃមាសអន្តរជាតិ (XAU/USD)
-                </div>
-                <div class="price-value">
-                    ${xau_usd:,.2f}
-                </div>
-                <div class="price-unit">
-                    ដុល្លារអាមេរិក / អោន
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with right:
-        st.markdown(
-            f"""
-            <div class="price-card">
-                <div class="price-label">
-                    តម្លៃគណនាតាមរូបមន្ត ÷ 0.83
-                </div>
-                <div class="price-value">
-                    ${calculated_value:,.2f}
-                </div>
-                <div class="price-unit">
-                    តម្លៃគណនាតាមរូបមន្តរបស់អ្នក
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    st.success("បានទាញយកទិន្នន័យតម្លៃមាស")
-
-    st.caption(
-        "ម៉ោងបច្ចុប្បន្ន៖ "
-        + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    )
-
-    st.caption(
-        "ទំព័រធ្វើបច្ចុប្បន្នភាពរៀងរាល់ ៥ វិនាទី។ "
-        "តម្លៃពីប្រភពទិន្នន័យត្រូវបានរក្សាទុក ៦០ វិនាទី។"
-    )
-
-except RuntimeError as e:
-    st.error("មិនអាចទាញយកតម្លៃមាសបានទេ។")
-    st.code(str(e), language="text")
-
-except requests.exceptions.Timeout:
-    st.error("ការទាញយកតម្លៃមាសចំណាយពេលយូរពេក។")
-
-except requests.exceptions.RequestException as e:
-    st.error("មិនអាចភ្ជាប់ទៅប្រភពតម្លៃមាសបានទេ។")
-    st.caption(f"ប្រភេទកំហុស៖ {type(e).__name__}")
-    st.code(str(e), language="text")
-
-except (ValueError, TypeError, KeyError) as e:
-    st.error("ទិន្នន័យតម្លៃមាសមិនត្រឹមត្រូវទេ។")
-    st.code(str(e), language="text")
-
-# -----------------------------
-# Footer
+# HEADER
 # -----------------------------
 st.markdown(
-    """
-    <div class="footer">
-        ស៊ុនលី សម័យថ្មី · តម្លៃមាសអាចប្រែប្រួលតាមទីផ្សារ
-    </div>
-    """,
+    '<div class="main-title">ស៊ុនលី សម័យថ្មី</div>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    '<div class="sub-title">តម្លៃមាសអន្តរជាតិ និងតម្លៃមាសក្នុងមួយតម្លឹង</div>',
+    unsafe_allow_html=True,
+)
+
+# -----------------------------
+# FETCH AND DISPLAY PRICE
+# -----------------------------
+try:
+    xau_usd = get_gold_price()
+
+    # Requested calculation
+    tael_value = xau_usd / 0.83
+
+    col1, col2 = st.columns(2, gap="large")
+
+    with col1:
+        st.markdown(f"""
+        <div class="price-card">
+            <div class="price-label">តម្លៃមាសអន្តរជាតិ (XAU/USD)</div>
+            <div class="price-value">${xau_usd:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown(f"""
+        <div class="price-card">
+            <div class="price-label">តម្លៃគណនាក្នុងមួយតម្លឹង</div>
+            <div class="price-value">${tael_value:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    cambodia_time = datetime.now(ZoneInfo("Asia/Phnom_Penh"))
+    st.markdown(
+        f'<div class="small-note">ម៉ោងអាប់ដេតចុងក្រោយ៖ '
+        f'{cambodia_time.strftime("%H:%M:%S")}</div>',
+        unsafe_allow_html=True,
+    )
+
+except Exception as e:
+    st.error("មិនអាចទាញយកតម្លៃមាសបានទេ។")
+    st.warning("សូមពិនិត្យការតភ្ជាប់អ៊ីនធឺណិត ឬសេវា API។")
+    with st.expander("មើលព័ត៌មានបច្ចេកទេស"):
+        st.code(str(e), language="text")
+
+st.markdown(
+    '<div class="small-note">ទិន្នន័យអាស្រ័យលើសេវា API '
+    'ហើយតម្លៃអាចមិនផ្លាស់ប្តូររាល់ ៥ វិនាទីទេ។</div>',
     unsafe_allow_html=True,
 )
